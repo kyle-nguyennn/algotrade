@@ -1,0 +1,20 @@
+{
+    "account_id": "myaccount",
+    "porfolios": [
+        {
+            "portfolio_id": "default",
+            "assets": []
+        }
+    ],
+    "watchlists": [
+        {
+            "watchlist_id": "default",
+            "assets": [
+                "GOOG",
+                "AAPL",
+                "MSFT",
+                "TSLA"
+            ]
+        }
+    ]
+}
