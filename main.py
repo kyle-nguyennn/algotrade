@@ -5,9 +5,8 @@ import pandas as pd
 import typing
 from models import Strategy
 from reporting.report import generateReport
+from settings import Setting
 from strategies.strategy_factory import StrategyFactory
-
-CONFIG_PATH = 'config/myaccount_config.json'
 
 def getViableStrategy(asset_id) -> typing.List[Strategy]:
     '''
@@ -68,7 +67,8 @@ def parallelized_call(func, partitions, n_jobs=8):
 
 if __name__=='__main__':
     # TODO: create Setting object and Context object
-    config = json.loads(open(CONFIG_PATH).read())
+    settings = Setting.get()
+    config = json.loads(open(settings.account_config_path).read())
     # TODO: error handling
     watchlist = list(filter(lambda wl: wl['watchlist_id'] == 'default', config['watchlists']))[0]
     asset_ids = watchlist['assets']
