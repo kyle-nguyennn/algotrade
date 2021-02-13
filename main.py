@@ -1,11 +1,10 @@
 import json
 import pandas_datareader as pdr
 import datetime
-from multiprocessing import Pool
 import pandas as pd
-import numpy as np
 import typing
 from models import Strategy
+from reporting.report import generateReport
 from strategies.strategy_factory import StrategyFactory
 
 CONFIG_PATH = 'config/myaccount_config.json'
@@ -33,7 +32,7 @@ def getViableStrategy(asset_id) -> typing.List[Strategy]:
     viableStrategies = stratQuery('Strategy', stratIds)
     return viableStrategies
 
-def strategy_runner(data: typing.Mapping[str, pd.DataFrame]):
+def strategy_runner(data: typing.Mapping[str, pd.DataFrame]) -> typing.Mapping[str, pd.DataFrame]:
     '''
     Execute strategies on a particular asset
     :param data:
@@ -48,7 +47,8 @@ def strategy_runner(data: typing.Mapping[str, pd.DataFrame]):
     viableStrategies: typing.List[Strategy] = getViableStrategy(assetId)
     # TODO: parallelize the for loop below
     results = [StrategyFactory.getStrategy(strat.name, **strat.params).run(df) for strat in viableStrategies]
-    return results
+    results = pd.concat(results, axis=1)
+    return {assetId: results}
 
 def parallelized_call(func, partitions, n_jobs=8):
     '''
@@ -91,4 +91,6 @@ if __name__=='__main__':
     ### from here on out, it's asset independent
     data = [{asset: df[asset]} for asset in asset_ids]
     results = parallelized_call(strategy_runner, data)
-    print(results)
+    results_dict = {list(result.keys())[0]: list(result.values())[0] for result in results}
+    res = generateReport(results_dict)
+    print(res)
