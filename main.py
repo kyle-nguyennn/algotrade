@@ -1,4 +1,6 @@
 import json
+import logging
+
 import pandas_datareader as pdr
 import datetime
 import pandas as pd
@@ -7,6 +9,9 @@ from models import Strategy
 from reporting.report import generateReport
 from settings import Setting
 from strategies.strategy_factory import StrategyFactory
+from utils import get_logger
+
+logger = get_logger(__name__, logging.INFO)
 
 def getViableStrategy(asset_id) -> typing.List[Strategy]:
     '''
@@ -40,12 +45,13 @@ def strategy_runner(data: typing.Mapping[str, pd.DataFrame]) -> typing.Mapping[s
     try:
         assert(len(data) == 1)
     except Exception:
-        print("Invalid input format. Skipping this job.")
+        logger.error("Function only accept 1 dataset. Skipping this job.")
+        return
     assetId = list(data.keys())[0]
-    df = data[assetId]
+    # df = data[assetId]
     viableStrategies: typing.List[Strategy] = getViableStrategy(assetId)
     # TODO: parallelize the for loop below
-    results = [StrategyFactory.getStrategy(strat.name, **strat.params).run(df) for strat in viableStrategies]
+    results = [StrategyFactory.getStrategy(strat.id, strat.name, **strat.params).run(data) for strat in viableStrategies]
     results = pd.concat(results, axis=1)
     return {assetId: results}
 
@@ -87,7 +93,6 @@ if __name__=='__main__':
     df = pdr.data.get_data_yahoo(asset_ids, start=start_date, end=end_date)
     ## swap level to put symbols first as it make sense to refer to each asset independently
     df = df.swaplevel('Attributes', 'Symbols', axis=1)
-    df = df.fillna(0)
     ### from here on out, it's asset independent
     data = [{asset: df[asset]} for asset in asset_ids]
     results = parallelized_call(strategy_runner, data)
