@@ -3,11 +3,14 @@ import logging
 import matplotlib.pyplot as plt
 import os
 from reporting.exporter import PdfExporter
-from utils import get_logger, get_project_root
+from settings import Setting
+from utils import get_logger, get_project_root, get_temp_path
 import tempfile
 import datetime
 
 logger = get_logger(__name__, logging.INFO)
+
+# TODO: move to settings
 
 def evaluate(df: pd.DataFrame, name: str, deleteTemp=False) -> bool:
     """
@@ -21,13 +24,14 @@ def evaluate(df: pd.DataFrame, name: str, deleteTemp=False) -> bool:
     """
     if not deleteTemp:
         tempDir = None
-        tempPath = os.path.join(get_project_root(), 'tmp')
+        tempPath = get_temp_path()
         if not os.path.exists(tempPath):
             os.makedirs(tempPath)
     else:
         tempDir = tempfile.TemporaryDirectory()
         tempPath = tempDir.name
-    tempPath = os.path.join(tempPath, name + '_' + datetime.datetime.now().strftime("%Y-%m-%dH%H:%M:%S"))
+    graph_file_extension = Setting.get().graph_file_extension
+    tempPath = os.path.join(tempPath, name)
     fig = plt.figure(figsize=(15, 10))
     s1 = fig.add_subplot(2, 1, 1)
     s1.plot(df['value'], label='Portfolio unit value')
@@ -39,7 +43,7 @@ def evaluate(df: pd.DataFrame, name: str, deleteTemp=False) -> bool:
     s2.plot(alpha, label='Excess return compared to asset', color='r')
     s2.legend()
     s2.set_title("Alpha")
-    fig.savefig(tempPath, format='png')
+    fig.savefig(tempPath + f'.{graph_file_extension}', format=graph_file_extension)
     logger.info(f"Graph for {name} generated at {tempPath}.")
     if tempDir: tempDir.cleanup()
     ### TODO: define the criteria for a pass

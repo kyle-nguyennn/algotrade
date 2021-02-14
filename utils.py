@@ -13,6 +13,8 @@ def get_logger(name, level=None):
     if level: logger.setLevel(level)
     return logger
 
+def get_temp_path():
+    return os.path.join(get_project_root(), 'tmp')
 
 if __name__=='__main__':
     print(get_project_root())

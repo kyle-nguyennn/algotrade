@@ -10,6 +10,7 @@ from reporting.report import generateReport
 from settings import Setting
 from strategies.strategy_factory import StrategyFactory
 from utils import get_logger
+from collections import ChainMap
 
 logger = get_logger(__name__, logging.INFO)
 
@@ -51,9 +52,14 @@ def strategy_runner(data: typing.Mapping[str, pd.DataFrame]) -> typing.Mapping[s
     # df = data[assetId]
     viableStrategies: typing.List[Strategy] = getViableStrategy(assetId)
     # TODO: parallelize the for loop below
-    results = [StrategyFactory.getStrategy(strat.id, strat.name, **strat.params).run(data) for strat in viableStrategies]
-    results = pd.concat(results, axis=1)
-    return {assetId: results}
+    results = [{strat.id: StrategyFactory.getStrategy(strat.id, strat.name, **strat.params).run(data)}
+               for strat in viableStrategies]
+    names = list()
+    if results:
+        names = list(list(results[0].values())[0].columns.names)
+    results_dict = dict(ChainMap(*results))
+    df = pd.concat(results_dict, axis=1, names=['StrategyId'] + names)
+    return {assetId: df}
 
 def parallelized_call(func, partitions, n_jobs=8):
     '''
@@ -96,6 +102,10 @@ if __name__=='__main__':
     ### from here on out, it's asset independent
     data = [{asset: df[asset]} for asset in asset_ids]
     results = parallelized_call(strategy_runner, data)
-    results_dict = {list(result.keys())[0]: list(result.values())[0] for result in results}
-    res = generateReport(results_dict)
+    names = list()
+    if results:
+        names = list(list(results[0].values())[0].columns.names)
+    results_dict = dict(ChainMap(*results))
+    results_df = pd.concat(results_dict, axis=1, names=['AssetId']+names)
+    res = generateReport(results_df)
     print(res)

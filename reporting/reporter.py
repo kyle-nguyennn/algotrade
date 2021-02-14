@@ -1,8 +1,11 @@
+from email import encoders
+from email.mime.base import MIMEBase
+
 import pandas as pd
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
-import smtplib, ssl
+import smtplib, ssl, os
 import smtplib
 import typing
 
@@ -30,7 +33,7 @@ class EmailReporter(Reporter):
         self.sender = Setting.get().sender_email
         self.receivers = receivers
 
-    def send(self, data: pd.DataFrame):
+    def send(self, data: pd.DataFrame, attachments=[]):
         emaillist = [elem.strip().split(',') for elem in self.receivers]
         msg = MIMEMultipart()
         msg['Subject'] = "Test Report"
@@ -44,9 +47,26 @@ class EmailReporter(Reporter):
           </body>
         </html>
         """.format(data.to_html())
-
         part1 = MIMEText(html, 'html')
         msg.attach(part1)
+        ### Attachment ###
+        if attachments:
+            for path in attachments:
+                filename = os.path.split(path)[-1]
+                with open(path, "rb") as attachment:
+                    # Add file as application/octet-stream
+                    # Email client can usually download this automatically as attachment
+                    part = MIMEBase("application", "octet-stream")
+                    part.set_payload(attachment.read())
+                # Encode file in ASCII characters to send by email
+                encoders.encode_base64(part)
+                # Add header as key/value pair to attachment part
+                part.add_header(
+                    "Content-Disposition",
+                    f"attachment; filename={filename}",
+                )
+                # Add attachment to message and convert message to string
+                msg.attach(part)
         # Create a secure SSL context
         context = ssl.create_default_context()
         setting = Setting.get()
