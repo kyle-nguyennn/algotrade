@@ -14,6 +14,8 @@ class Setting:
             Password to sender email
         account_config_path: str
             Path to configuration file for account
+        graph_file_extension: str
+            File extension for picture of graphs
     """
     setting = None
     @classmethod
