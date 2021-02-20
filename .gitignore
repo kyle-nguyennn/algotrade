@@ -1,6 +1,6 @@
 __pycache__
 .idea
 notebooks/.ipynb_checkpoints
-environment.json
+settings.json
 .DS_Store
 tmp

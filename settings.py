@@ -30,7 +30,7 @@ class Setting:
     @classmethod
     def __populateSetting(cls):
         rootDir = get_project_root()
-        path = os.path.join(rootDir, 'environment.json')
+        path = os.path.join(rootDir, 'settings.json')
         envDict = json.loads(open(path).read())
         for k, v in envDict.items():
             setattr(cls.setting, k, v)
