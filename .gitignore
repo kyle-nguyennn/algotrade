@@ -2,5 +2,10 @@ __pycache__
 .idea
 notebooks/
 environment.json
+settings.json
 .DS_Store
 tmp
+web/yarn.lock
+web/package-lock.json
+web/node_modules
+*.swp
