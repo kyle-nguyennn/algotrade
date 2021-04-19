@@ -1,6 +1,6 @@
 __pycache__
 .idea
-notebooks/.ipynb_checkpoints
+notebooks/
 environment.json
 .DS_Store
 tmp
