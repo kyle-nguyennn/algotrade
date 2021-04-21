@@ -1,10 +1,7 @@
-from evaluation import evaluate
-from indicators import IndicatorRunner
 from indicators.indicators_impl import MovingWindow
 from strategies.strategy_interface import Strategy
 import pandas as pd
 import numpy as np
-import typing
 
 class ThreeHeadStrategyImpl(Strategy):
     ma_type: str # type of moving average, in list ['SMA', 'EMA']
@@ -25,38 +22,11 @@ class ThreeHeadStrategyImpl(Strategy):
             MovingWindow(['Adj Close'], ['floor'], window_size=self.floor_window_size, aggregate='mean')
         ]
 
-    def __calculateIndicators(self, data: pd.DataFrame):
-        data = IndicatorRunner().run(data, self.indicators)
-        return data
-
-    def run(self, data: typing.Mapping[str, pd.DataFrame]) -> pd.DataFrame:
-        """
-        :param data:
-        :return: a series of buy/sell signal
-        """
-        ### this step should be implemented in Indicator class
-        assetId = list(data.keys())[0]
-        df = data[assetId]
-        df = df.dropna()
-        ### enrich data required for strategy implementation
-        df = self.__calculateIndicators(df)
-        ### actual strategy ###
-        df['position'] = np.where((df['cur'] > df['ceil']) & (df['ceil'] > df['floor']), 1, 0)
-        ### evaluation parameters
-        df['asset_ret'] = df['Adj Close'].pct_change()
-        df['return'] = df['asset_ret'] * df['position']
-        df['unit_asset_ret'] = (1 + df['asset_ret']).cumprod()
-        df['value'] = (1 + df['return']).cumprod()
-        ### evaluate
-        evalName = f"{self.id}_{assetId}"
-        if not evaluate(df, evalName):
-            print(f"Strategy {self.__name__} is not suitable for this asset [{assetId}].")
-            return None
-        ### generate buy/sell signal if pass evaluation phase
-        """
-            signal: in list ['BUY', 'SELL', 'HOLD']
-        """
-        df['signal'] = np.where((df['position'] == 1) & (df['position'].shift(1) == 0), 'BUY', 'HOLD')
-        df['signal'] = np.where((df['position'] == 0) & (df['position'].shift(1) == 1), 'SELL', df['signal'])
-        df['signal'] = df['signal'] + '-' + df['Adj Close'].apply("{0:.2f}".format)
-        return df
+    def calculatePosition(self, df: pd.DataFrame) -> pd.Series:
+        '''
+        Is called in Strategy.run to obtain 'position' column
+        :param df: must already be passed through self.__calculateIndicators to obtain necessary columns
+                for the calculation in body
+        :return: a series of 0 and 1, indicating how many units we're having at that point in time
+        '''
+        return np.where((df['cur'] > df['ceil']) & (df['ceil'] > df['floor']), 1, 0)
