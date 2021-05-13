@@ -1,11 +1,12 @@
 import json
 import logging
 
-import pandas_datareader as pdr
+from evaluation import evaluate
+from market_data import fetchMarketData
 import datetime
 import pandas as pd
 import typing
-from models import Strategy
+from models import Strategy, EvaluationPeriod
 from reporting.report import generateReport
 from settings import Setting
 from strategies.strategy_factory import StrategyFactory
@@ -33,33 +34,27 @@ def getViableStrategy(asset_id) -> typing.List[Strategy]:
     }
     stratQuery = lambda doc_name, ids: [hardCodedStrat]
     ########## below part is independent of how to fetch data ########
-    stratIds = assetQuery('Asset', asset_id, 'viable_strategies')
+    stratIds = assetQuery('Asset', asset_id, ['viable_strategies'])
     viableStrategies = stratQuery('Strategy', stratIds)
     return viableStrategies
 
-def strategy_runner(data: typing.Mapping[str, pd.DataFrame]) -> typing.Mapping[str, pd.DataFrame]:
+def strategy_runner(assetId: str, data: pd.DataFrame) -> typing.Mapping[str, pd.DataFrame]:
     '''
     Execute strategies on a particular asset
-    :param data:
+    :param data: mapping from assetId to its market data
     :return:
     '''
-    try:
-        assert(len(data) == 1)
-    except Exception:
-        logger.error("Function only accept 1 dataset. Skipping this job.")
-        return
-    assetId = list(data.keys())[0]
-    # df = data[assetId]
     viableStrategies: typing.List[Strategy] = getViableStrategy(assetId)
     # TODO: parallelize the for loop below
-    results = [{strat.id: StrategyFactory.getStrategy(strat.id, strat.name, **strat.params).run(data)}
+    results = [{strat.id: StrategyFactory.getStrategy(strat.id, strat.name, **strat.params) \
+                .run(data)}
                for strat in viableStrategies]
     names = list()
     if results:
         names = list(list(results[0].values())[0].columns.names)
     results_dict = dict(ChainMap(*results))
     df = pd.concat(results_dict, axis=1, names=['StrategyId'] + names)
-    return {assetId: df}
+    return df
 
 def parallelized_call(func, partitions, n_jobs=8):
     '''
@@ -73,8 +68,8 @@ def parallelized_call(func, partitions, n_jobs=8):
     '''
     # p = Pool(n_jobs)
     # results = p.map(func, partitions)
-    # TODO: apply parallelized version
-    results = [func(partition) for partition in partitions]
+    # TODO: apply parallelized version, results should maintain order as input partitions
+    results = [func(*params) for params in partitions]
     return results
 
 if __name__=='__main__':
@@ -93,19 +88,24 @@ if __name__=='__main__':
     # 1. trading info (price, volume, etc.)
     # 2. company info (BS, news, etc.)
     # assuming we get these config from Strategy
-    start_date = datetime.date(2010, 1, 1)
-    end_date = datetime.datetime.now().date()
+    evaluationPeriods = ['THIRTY_DAYS', 'NINETY_DAYS', 'ONE_YEAR', 'TEN_YEARS']
+    endDate = datetime.datetime.now().date()
+    timedeltaPeriods = [EvaluationPeriod.fromString(period) for period in evaluationPeriods]
     #####
-    df = pdr.data.get_data_yahoo(asset_ids, start=start_date, end=end_date)
-    ## swap level to put symbols first as it make sense to refer to each asset independently
-    df = df.swaplevel('Attributes', 'Symbols', axis=1)
-    ### from here on out, it's asset independent
-    data = [{asset: df[asset]} for asset in asset_ids]
-    results = parallelized_call(strategy_runner, data)
-    names = list()
-    if results:
-        names = list(list(results[0].values())[0].columns.names)
-    results_dict = dict(ChainMap(*results))
-    results_df = pd.concat(results_dict, axis=1, names=['AssetId']+names)
-    res = generateReport(results_df)
-    print(res)
+    for timedeltaPeriod in timedeltaPeriods:
+        startDate = endDate - timedeltaPeriod.toTimeDelta()
+        ### from here on out, it's asset independent
+        data = {asset: fetchMarketData(asset, startDate, endDate) for asset in asset_ids}
+        results = parallelized_call(strategy_runner, list(data.items())) # results order is guaranteed by parallelized_call
+        # evaluation
+        for assetId, result in zip(asset_ids, results):
+            strategyIds = list(set(result.columns.get_level_values('StrategyId')))
+            [evaluate(assetId, strategyId, result.xs(strategyId, axis=1), evaluationPeriod=timedeltaPeriod)
+             for strategyId in strategyIds]
+        names = list()
+        # if results:
+        #     names = list(list(results[0].values())[0].columns.names)
+        # results_dict = dict(ChainMap(*results))
+        # results_df = pd.concat(results_dict, axis=1, names=['AssetId']+names)
+    # res = generateReport(results_df)
+    # print(res)

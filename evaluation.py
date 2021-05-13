@@ -2,7 +2,8 @@ import pandas as pd
 import logging
 import matplotlib.pyplot as plt
 import os
-from reporting.exporter import PdfExporter
+
+from models import EvaluationPeriod
 from settings import Setting
 from utils import get_logger, get_project_root, get_temp_path
 import tempfile
@@ -12,16 +13,26 @@ logger = get_logger(__name__, logging.INFO)
 
 # TODO: move to settings
 
-def evaluate(df: pd.DataFrame, name: str, deleteTemp=False) -> bool:
+
+
+def evaluate(assetId: str, strategyId: str, df: pd.DataFrame, evaluationPeriod: EvaluationPeriod = None,
+             deleteTemp=False) -> bool:
     """
     Evaluate the performance of an arbitrary strategy. Columns required in df for evaluation process as below
     :param
-        df: assume the existence of these columns
-            value: unit value of the portfolio
-            unit_asset_ret: unit value of the asset
-        name: in the format stratId_assetId
-        :return:
+        assetId:
+        strategyId: ID of the strategy with the specific set of parameters that generate 'position' for data
+        df: assume the existence of these columns after running through a Strategy
+            position: determine the position of the asset at each point in time
+    :return: the enriched df with evaluation parameters if pass evaluation criteria, else return None
     """
+    name = '_'.join([assetId, strategyId, evaluationPeriod.name])
+    ### evaluation parameters
+    df['asset_ret'] = df['Adj Close'].pct_change()
+    df['return'] = df['asset_ret'] * df['position']
+    df['unit_asset_ret'] = (1 + df['asset_ret']).cumprod()
+    df['value'] = (1 + df['return']).cumprod()
+    ### evaluate
     if not deleteTemp:
         tempDir = None
         tempPath = get_temp_path()
@@ -44,7 +55,10 @@ def evaluate(df: pd.DataFrame, name: str, deleteTemp=False) -> bool:
     s2.legend()
     s2.set_title("Alpha")
     fig.savefig(tempPath + f'.{graph_file_extension}', format=graph_file_extension)
+    fig.close()
     logger.info(f"Graph for {name} generated at {tempPath}.")
     if tempDir: tempDir.cleanup()
     ### TODO: define the criteria for a pass
-    return True
+    if not True:
+        return None
+    return df
