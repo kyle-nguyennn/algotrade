@@ -10,10 +10,14 @@
         {
             "watchlist_id": "default",
             "assets": [
+                "^SPX",
+                "^DJI",
+                "^IXIC",
                 "GOOG",
                 "AAPL",
                 "MSFT",
-                "TSLA"
+                "TSLA",
+                "AMZN"
             ]
         }
     ]
