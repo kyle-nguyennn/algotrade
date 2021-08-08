@@ -55,7 +55,7 @@ def evaluate(assetId: str, strategyId: str, df: pd.DataFrame, evaluationPeriod: 
     s2.legend()
     s2.set_title("Alpha")
     fig.savefig(tempPath + f'.{graph_file_extension}', format=graph_file_extension)
-    fig.close()
+    plt.close(fig)
     logger.info(f"Graph for {name} generated at {tempPath}.")
     if tempDir: tempDir.cleanup()
     ### TODO: define the criteria for a pass
