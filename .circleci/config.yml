@@ -1,0 +1,9 @@
+version: 2.1
+jobs:
+  build:
+    working_directory: ~/algotrade
+    docker:
+      - image: cimg/python:3.9.7
+    steps:
+      - checkout
+      - run: python --version
