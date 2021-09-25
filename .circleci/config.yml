@@ -7,9 +7,9 @@ jobs:
     steps:
       - checkout
       - run:
-        command: |
-          sudo apt install pipenv
-          pipenv install -r requirements
+          command: |
+            sudo apt install pipenv
+            pipenv install -r requirements
 workflows:
   build-and-test:
     jobs:
