@@ -9,7 +9,18 @@ jobs:
       - run:
           command: |
             pipenv install -r requirements
+  test:
+    working_directory: ~/algotrade
+    docker:
+      - image: cimg/python:3.9.7
+    steps:
+      - checkout
+      - run:
+          command: |
+            pipenv install -r requirements
+            pipenv run test.py
 workflows:
   build-and-test:
     jobs:
       - build
+      - test
