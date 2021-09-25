@@ -6,21 +6,16 @@ jobs:
       - image: cimg/python:3.9.7
     steps:
       - checkout
-      - run:
-          command: |
-            pipenv install -r requirements
-  test:
-    working_directory: ~/algotrade
-    docker:
-      - image: cimg/python:3.9.7
-    steps:
-      - checkout
-      - run:
-          command: |
-            pipenv install -r requirements
-            pipenv run test.py
+      - restore_cache:
+          # Read about caching dependencies: https://circleci.com/docs/2.0/caching/
+          key: deps9-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
+      - run: pipenv install -r requirements
+      - save_cache: # cache Python dependencies using checksum of Pipfile as the cache-key
+          key: deps9-{{ .Branch }}-{{ checksum "Pipfile.lock" }}
+          paths:
+            - "venv"
+      - run: pipenv run python test.py
 workflows:
   build-and-test:
     jobs:
       - build
-      - test
