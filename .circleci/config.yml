@@ -8,7 +8,7 @@ jobs:
       - checkout
       - run:
           command: |
-            sudo apt install pipenv
+            sudo pip install pipenv
             pipenv install -r requirements
 workflows:
   build-and-test:
