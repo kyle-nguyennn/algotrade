@@ -7,3 +7,7 @@ jobs:
     steps:
       - checkout
       - run: python --version
+workflows:
+  build-and-test:
+    jobs:
+      - build
