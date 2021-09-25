@@ -6,7 +6,10 @@ jobs:
       - image: cimg/python:3.9.7
     steps:
       - checkout
-      - run: python --version
+      - run:
+        command: |
+          sudo apt install pipenv
+          pipenv install -r requirements
 workflows:
   build-and-test:
     jobs:
