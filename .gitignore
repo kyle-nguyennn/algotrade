@@ -5,3 +5,5 @@ notebooks/
 environment.json
 .DS_Store
 tmp
+node_modules
+yarn.lock
