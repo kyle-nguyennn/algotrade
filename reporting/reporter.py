@@ -3,7 +3,6 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 import smtplib, ssl
-import smtplib
 import typing
 
 from settings import Setting
@@ -52,16 +51,12 @@ class EmailReporter(Reporter):
         setting = Setting.get()
         # Try to log in to server and send email
         try:
-            server = smtplib.SMTP(self.smtp_server, self.tls_port)
-            server.ehlo()  # Can be omitted
-            server.starttls(context=context)  # Secure the connection
-            server.ehlo()  # Can be omitted
-            server.login(self.sender, setting.sender_email_password)
-            # Send email here
-            server.sendmail(msg['From'], emaillist, msg.as_string())
-            logger.info(f"Successfully send email to {emaillist}.")
+            with smtplib.SMTP(self.smtp_server, self.tls_port) as server:
+                server.starttls(context=context)  # Secure the connection
+                server.login(self.sender, setting.sender_email_password)
+                # Send email here
+                server.sendmail(msg['From'], emaillist, msg.as_string())
+                logger.info(f"Successfully send email to {emaillist}.")
         except Exception as e:
             # Print any error messages to stdout
             logger.error(str(e))
-        finally:
-            server.quit()
