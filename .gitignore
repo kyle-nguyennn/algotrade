@@ -5,3 +5,4 @@ environment.json
 .DS_Store
 tmp
 .vscode
+settings.json
