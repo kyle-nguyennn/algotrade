@@ -1,9 +1,10 @@
 __pycache__
 .idea
 settings.json
-notebooks/
 environment.json
 .DS_Store
 tmp
 node_modules
 yarn.lock
+*.sqlite3
+config/*.json
