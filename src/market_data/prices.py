@@ -5,9 +5,13 @@ import json
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Iterable, Iterator, Optional, Tuple, Union
+from typing import Dict, Iterable, Iterator, Optional, Tuple, Union
 
 import pandas as pd
+
+# Note: pandas_datareader's Yahoo backend is sometimes blocked by Yahoo (HTTP 404/consent pages).
+# We still try it first (as requested), but fall back to `yfinance` when needed.
+from pandas_datareader import data as pdr
 
 
 def _default_data_dir() -> Path:
@@ -51,7 +55,7 @@ class YahooPriceStore:
     """Fetches daily OHLCV data from Yahoo via pandas_datareader with parquet caching.
 
     Cache layout (partitioned by date):
-      data/prices/yahoo/{symbol}/date=YYYY-MM-DD/part-*.parquet
+            data/prices/yahoo/{symbol}/YYYY-MM-DD/part-*.parquet
       data/prices/yahoo/{symbol}/_meta.json
 
     The iterator methods stream data in batches to avoid large in-memory frames.
@@ -115,7 +119,7 @@ class YahooPriceStore:
             ) from e
 
     def _write_partitioned_parquet(self, symbol: str, frame: pd.DataFrame) -> None:
-        """Write a pandas DataFrame with a `date` column partitioned by date (hive style)."""
+        """Write a pandas DataFrame with a `date` column partitioned by date (directory style)."""
         self._ensure_pyarrow()
         import pyarrow as pa  # type: ignore[import-not-found]
         import pyarrow.dataset as ds  # type: ignore[import-not-found]
@@ -132,7 +136,7 @@ class YahooPriceStore:
 
         partitioning = ds.partitioning(
             pa.schema([("date", pa.date32())]),
-            flavor="hive",
+            # DirectoryPartitioning (default): YYYY-MM-DD/ (no key name prefix)
         )
 
         # PyArrow API differs by version; try to preserve existing cached partitions.
@@ -163,16 +167,80 @@ class YahooPriceStore:
                     shutil.copytree(child, dest)
 
     def _fetch_yahoo(self, symbol: str, start: date, end: date) -> pd.DataFrame:
-        """Fetch from Yahoo (daily) using pandas_datareader."""
-        try:
-            from pandas_datareader import data as pdr
-        except Exception as e:
-            raise RuntimeError(
-                "Yahoo fetching requires `pandas_datareader`. Install with: pip install pandas_datareader"
-            ) from e
+        """Fetch from Yahoo (daily).
+
+        Primary path uses `pandas_datareader` (requested). If Yahoo blocks it (common), we fall back to
+        `yfinance` when available.
+        """
+
+        def _fetch_with_yfinance() -> pd.DataFrame:
+            try:
+                import yfinance as yf  # type: ignore[import-not-found]
+            except Exception as e:
+                raise RuntimeError(
+                    "Yahoo fetch via pandas_datareader failed (likely blocked by Yahoo). "
+                    "Install a fallback provider with: pip install yfinance"
+                ) from e
+
+            # yfinance expects strings/datetimes; end is exclusive-ish depending on provider.
+            ydf = yf.download(
+                symbol,
+                start=pd.Timestamp(start),
+                end=pd.Timestamp(end) + pd.Timedelta(days=1),
+                progress=False,
+                auto_adjust=False,
+                actions=False,
+                threads=True,
+            )
+            if ydf is None or ydf.empty:
+                return pd.DataFrame(columns=["date", "open", "high", "low", "close", "adj_close", "volume"])
+
+            # yfinance may return MultiIndex columns (e.g., ('Open','SPY') or ('SPY','Open')).
+            if isinstance(ydf.columns, pd.MultiIndex):
+                expected = {"Open", "High", "Low", "Close", "Adj Close", "Volume"}
+                levels = [set(map(str, ydf.columns.get_level_values(i))) for i in range(ydf.columns.nlevels)]
+                if expected.issubset(levels[0]):
+                    ydf.columns = ydf.columns.get_level_values(0)
+                elif len(levels) > 1 and expected.issubset(levels[1]):
+                    ydf.columns = ydf.columns.get_level_values(1)
+                else:
+                    ydf.columns = ["_".join(map(str, t)).strip() for t in ydf.columns]
+
+            ydf = ydf.reset_index().rename(
+                columns={
+                    "Date": "date",
+                    "Open": "open",
+                    "High": "high",
+                    "Low": "low",
+                    "Close": "close",
+                    "Adj Close": "adj_close",
+                    "Volume": "volume",
+                }
+            )
+
+            # Normalize columns
+            ydf.columns = [str(c).strip().lower().replace(" ", "_") for c in ydf.columns]
+            keep = [c for c in ["date", "open", "high", "low", "close", "adj_close", "volume"] if c in ydf.columns]
+            return ydf[keep].sort_values("date")
 
         # pandas_datareader expects datetime-like
-        df = pdr.get_data_yahoo(symbol, start=pd.Timestamp(start), end=pd.Timestamp(end) + pd.Timedelta(days=1))
+        try:
+            df = pdr.get_data_yahoo(
+                symbol,
+                start=pd.Timestamp(start),
+                end=pd.Timestamp(end) + pd.Timedelta(days=1),
+            )
+        except Exception as e:
+            # Yahoo frequently returns 404/consent pages to programmatic clients.
+            try:
+                from pandas_datareader._utils import RemoteDataError
+            except Exception:
+                RemoteDataError = Exception  # type: ignore[assignment]
+
+            if isinstance(e, RemoteDataError) or "Unable to read URL" in str(e):
+                df = _fetch_with_yfinance()
+            else:
+                raise
         if df is None or df.empty:
             return pd.DataFrame(columns=["date", "open", "high", "low", "close", "adj_close", "volume"])
 
@@ -209,15 +277,35 @@ class YahooPriceStore:
                     self._update_meta_range(symbol, bs, be)
 
         self._ensure_pyarrow()
+        import pyarrow as pa  # type: ignore[import-not-found]
         import pyarrow.dataset as ds  # type: ignore[import-not-found]
 
         root = self._symbol_root(symbol)
         if not root.exists():
             return pd.DataFrame(columns=["date", "open", "high", "low", "close", "adj_close", "volume"])
 
-        dataset = ds.dataset(str(root), format="parquet", partitioning="hive")
-        filt = (ds.field("date") >= pd.Timestamp(s).date()) & (ds.field("date") <= pd.Timestamp(e).date())
-        table = dataset.to_table(filter=filt)
+        # Prefer directory-style partitions (YYYY-MM-DD/). If the cache was created previously with hive
+        # style (date=YYYY-MM-DD/), fall back to hive for backward compatibility.
+        has_hive_dirs = any(p.is_dir() and p.name.startswith("date=") for p in root.iterdir())
+        if not has_hive_dirs:
+            partitioning = ds.partitioning(
+                pa.schema([("date", pa.date32())]),
+            )
+            dataset = ds.dataset(str(root), format="parquet", partitioning=partitioning)
+        else:
+            dataset = ds.dataset(str(root), format="parquet", partitioning="hive")
+
+        start_d = pd.Timestamp(s).date()
+        end_d = pd.Timestamp(e).date()
+
+        # For directory-style partitions with an explicit schema, comparisons should work with date32.
+        # For some hive-style datasets, the partition value may be inferred as string.
+        try:
+            filt = (ds.field("date") >= start_d) & (ds.field("date") <= end_d)
+            table = dataset.to_table(filter=filt)
+        except Exception:
+            filt = (ds.field("date") >= start_d.isoformat()) & (ds.field("date") <= end_d.isoformat())
+            table = dataset.to_table(filter=filt)
         out = table.to_pandas()
         if "date" in out.columns:
             out["date"] = pd.to_datetime(out["date"]).dt.date

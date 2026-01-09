@@ -21,3 +21,4 @@ dependencies:
 - pyarrow
 - polars
 - python-binance
+- yfinance
