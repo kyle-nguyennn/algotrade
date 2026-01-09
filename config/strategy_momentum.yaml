@@ -1,0 +1,21 @@
+
+# Example config for one strategy (extensible to many).
+strategy:
+  strategy_id: "etf_sma_momentum_v1"
+  class: "SMAMomentum"
+  params:
+    fast_window: 50
+    slow_window: 200
+    max_position_pct: 0.95   # % of virtual cash to deploy when signal is ON
+    symbol: "SPY"
+portfolio:
+  base_currency: "USD"
+  virtual_cash: 30000        # isolate capital for this strategy
+risk:
+  max_single_position_pct: 1.0   # cannot exceed 100% of virtual cash
+  max_drawdown_pct: 0.25         # stop trading if equity down 25% from peak
+broker:
+  type: "paper"   # "paper" | "ibkr"
+  ibkr_config: "config/broker_ibkr.json"
+storage:
+  sqlite_path: "trades.sqlite3"

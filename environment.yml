@@ -18,3 +18,5 @@ dependencies:
 - networkx
 - statsmodels
 - pandas-datareader
+- pyarrow
+- polars
